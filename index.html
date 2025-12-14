@@ -2,696 +2,818 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>SnapMark - 画像編集ツール</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slide Polisher for NotebookLM</title>
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    
+    <!-- PDF.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    
+    <!-- JSZip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <!-- gifshot (for GIF generation) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
 
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Import Map for Google Generative AI -->
+    <script type="importmap">
+      {
+        "imports": {
+          "@google/generative-ai": "https://esm.run/@google/generative-ai"
+        }
+      }
+    </script>
+
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: { sans: ['"Inter"', '"Noto Sans JP"', 'sans-serif'] },
-                    colors: { 
-                        brand: { 50: '#f0fdfa', 100: '#ccfbf1', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e', 900: '#134e4a' },
-                        accent: { 500: '#6366f1', 600: '#4f46e5' }
+                    colors: {
+                        brand: {
+                            50: '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            900: '#1e3a8a',
+                        }
                     },
-                    boxShadow: { 
-                        'glass': '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
-                        'float': '0 10px 40px -10px rgba(0,0,0,0.1)'
+                    fontFamily: {
+                        sans: ['"Noto Sans JP"', 'sans-serif'],
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.6s ease-out forwards',
+                        'slide-up': 'slideUp 0.6s ease-out forwards',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
                     }
                 }
             }
         }
+        // PDF.js worker setup
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
     </script>
+
     <style>
-        /* 100dvhでモバイルブラウザのアドレスバー変動に対応 */
-        body { font-family: 'Inter', 'Noto Sans JP', sans-serif; touch-action: none; background-color: #f8fafc; color: #0f172a; height: 100dvh; overflow: hidden; }
-        
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; border: 2px solid transparent; background-clip: content-box; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background-color: #94a3b8; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-        /* ツールボタン */
-        .tool-btn { position: relative; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border-radius: 12px; }
-        .tool-btn.active { background-color: #0f172a; color: white; box-shadow: 0 4px 12px rgba(15, 23, 42, 0.15); transform: translateY(-1px); }
-        .tool-btn:hover:not(.active) { background-color: #e2e8f0; transform: translateY(-1px); }
-
-        /* ドラムロール */
-        .drum-container { position: relative; height: 120px; overflow: hidden; background: #f8fafc; border-radius: 16px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.02); touch-action: pan-y; }
-        .drum-mask { position: absolute; inset: 0; pointer-events: none; z-index: 10; background: linear-gradient(to bottom, #ffffff 0%, transparent 40%, transparent 60%, #ffffff 100%); }
-        .drum-scroll { height: 100%; overflow-y: auto; scroll-snap-type: y mandatory; padding-top: 40px; padding-bottom: 40px; scrollbar-width: none; width: 100%; overflow-x: hidden; }
-        .drum-item { height: 40px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 500; color: #94a3b8; scroll-snap-align: center; transition: all 0.2s ease; cursor: pointer; width: 100%; }
-        .drum-item.active { color: #0f172a; font-size: 24px; font-weight: 700; transform: scale(1.1); }
-        .drum-highlight { position: absolute; top: 50%; left: 16px; right: 16px; height: 40px; transform: translateY(-50%); border-radius: 8px; background-color: rgba(15, 23, 42, 0.03); pointer-events: none; z-index: 0; }
-
-        /* カスタムスライダー */
-        input[type=range] { -webkit-appearance: none; background: transparent; cursor: pointer; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #ffffff; border: 2px solid #0f172a; margin-top: -8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); transition: transform 0.1s; }
-        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.15); }
-        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; border-radius: 2px; background: linear-gradient(to right, #cbd5e1 0%, #cbd5e1 100%); }
-
-        /* ピッカーパネル (Glassmorphism) */
+        body {
+            background-color: #f8fafc;
+            color: #1e293b;
+            background-image: radial-gradient(at 0% 0%, hsla(253,16%,7%,0) 0, hsla(253,16%,7%,0) 50%), radial-gradient(at 50% 0%, hsla(225,39%,30%,0.1) 0, hsla(225,39%,30%,0) 50%), radial-gradient(at 100% 0%, hsla(339,49%,30%,0.1) 0, hsla(339,49%,30%,0) 50%);
+        }
         .glass-panel {
-            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.5); box-shadow: 0 10px 40px -10px rgba(0,0,0,0.15);
-            /* スマホでの安全領域確保 */
-            padding-bottom: calc(env(safe-area-inset-bottom) + 20px);
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
         }
-        
-        .panel-enter { animation: panel-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        @keyframes panel-in {
-            from { opacity: 0; transform: translateY(20px) scale(0.96); }
-            to { opacity: 1; transform: translateY(0) scale(1); }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
         }
-
-        /* カラーピッカー */
-        .color-dot { width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        .color-dot:hover { transform: scale(1.15); }
-        .color-dot.active { box-shadow: 0 0 0 2px white, 0 0 0 4px #0f172a; z-index: 1; }
-        .color-input-wrapper { position: relative; width: 100%; height: 40px; border-radius: 12px; overflow: hidden; cursor: pointer; border: 1px solid #e2e8f0; background: white; transition: border-color 0.2s; }
-        .color-input-wrapper:hover { border-color: #cbd5e1; }
-        input[type="color"] { position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; padding: 0; margin: 0; border: none; cursor: pointer; }
-
-        /* トースト通知 */
-        #toast {
-            position: fixed; top: 32px; left: 50%; transform: translateX(-50%) translateY(-150%);
-            opacity: 0; visibility: hidden; transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
-            z-index: 100; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.15);
-            background-color: #1f2937; color: white;
-            padding: 12px 28px; border-radius: 99px;
-            display: flex; align-items: center; gap: 12px;
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
         }
-        #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
-        
-        .tool-separator { width: 1px; height: 24px; background-color: #e2e8f0; margin: 0 6px; }
-        @media (max-width: 768px) { .tool-separator { width: 24px; height: 1px; margin: 6px 0; } }
-
-        /* LP風デザイン */
-        .lp-bg { background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); }
-        .mesh-gradient { position: absolute; width: 100%; height: 100%; top: 0; left: 0; overflow: hidden; pointer-events: none; z-index: 0; }
-        .mesh-blob { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.6; }
-        .step-card {
-            background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.8);
-            border-radius: 24px; padding: 28px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.01); transition: all 0.3s ease;
+        ::-webkit-scrollbar-track {
+            background: transparent; 
         }
-        .step-card:hover { transform: translateY(-4px); background: rgba(255, 255, 255, 0.9); box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.08); }
-        .step-icon-wrapper {
-            width: 48px; height: 48px; border-radius: 16px; background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
-            display: flex; align-items: center; justify-content: center; color: #4f46e5; margin-bottom: 16px;
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
         }
-        .upload-area {
-            background: rgba(255,255,255,0.6); backdrop-filter: blur(10px); border: 2px dashed #cbd5e1;
-            border-radius: 32px; transition: all 0.3s ease; box-shadow: 0 10px 30px -10px rgba(0,0,0,0.05);
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
         }
-        .upload-area:hover, .upload-area.drag-over { border-color: #4f46e5; background: rgba(238, 242, 255, 0.8); transform: scale(1.01); }
     </style>
 </head>
-<body class="h-screen flex flex-col overflow-hidden bg-slate-50">
+<body>
+    <div id="root"></div>
 
-    <!-- ヘッダー -->
-    <header class="bg-white/60 backdrop-blur-xl border-b border-white/20 z-30 shrink-0 h-16 sticky top-0 shadow-sm">
-        <div class="max-w-[1600px] mx-auto px-6 h-full flex items-center justify-between">
-            
-            <div class="flex items-center gap-4">
-                <!-- 戻るボタン: onclickでresetEditorを呼ぶ -->
-                <button id="closeBtn" onclick="closeEditor()" class="hidden relative z-50 p-2 -ml-2 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors mr-1 cursor-pointer" title="編集を終了">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
+    <script type="text/babel" data-type="module">
+        import { GoogleGenerativeAI } from "@google/generative-ai";
+        
+        const { useState, useEffect, useRef } = React;
 
-                <!-- ロゴ -->
-                <div id="logoBtn" onclick="closeEditor()" class="flex items-center gap-3 select-none cursor-pointer group">
-                    <div class="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-2 rounded-xl shadow-lg shadow-indigo-500/20 group-hover:scale-105 transition-transform duration-300">
-                        <i data-lucide="pen-tool" class="w-5 h-5"></i>
-                    </div>
-                    <div class="hidden sm:block">
-                        <h1 class="text-xl font-extrabold tracking-tight text-slate-800 leading-none">SnapMark</h1>
-                    </div>
+        // Configuration
+        // 修正: ユーザー指定により "gemini-2.5-flash" を使用します。
+        // ※このモデル名が有効なAPIキー（プレビューアクセス等）でない場合、エラーになる可能性があります。
+        const GEMINI_MODEL_NAME = "gemini-2.5-flash";
+
+        // --- Icon Components ---
+        const IconWrapper = ({ children, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                {children}
+            </svg>
+        );
+
+        const Upload = ({ className }) => (<IconWrapper className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></IconWrapper>);
+        const FileUp = ({ className }) => (<IconWrapper className={className}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 12v6"/><path d="m15 15-3-3-3 3"/></IconWrapper>);
+        const ImageIcon = ({ className }) => (<IconWrapper className={className}><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></IconWrapper>);
+        const Wand2 = ({ className }) => (<IconWrapper className={className}><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></IconWrapper>);
+        const FileArchive = ({ className }) => (<IconWrapper className={className}><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="M10 22v-8"/><path d="m7 17 3-3 3 3"/><path d="M4 14h12"/></IconWrapper>);
+        const Film = ({ className }) => (<IconWrapper className={className}><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M7 3v18"/><path d="M3 7.5h4"/><path d="M3 12h18"/><path d="M3 16.5h4"/><path d="M17 3v18"/><path d="M17 7.5h4"/><path d="M17 16.5h4"/></IconWrapper>);
+        const Check = ({ className }) => (<IconWrapper className={className}><polyline points="20 6 9 17 4 12"/></IconWrapper>);
+        const Copy = ({ className }) => (<IconWrapper className={className}><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></IconWrapper>);
+        const X = ({ className }) => (<IconWrapper className={className}><path d="M18 6 6 18"/><path d="m6 6 12 12"/></IconWrapper>);
+        const Sparkles = ({ className }) => (<IconWrapper className={className}><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M9 3v4"/><path d="M3 5h4"/><path d="M3 9h4"/></IconWrapper>);
+        const BookOpen = ({ className }) => (<IconWrapper className={className}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></IconWrapper>);
+        const Presentation = ({ className }) => (<IconWrapper className={className}><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/></IconWrapper>);
+        const Key = ({ className }) => (<IconWrapper className={className}><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></IconWrapper>);
+        const BrainCircuit = ({ className }) => (<IconWrapper className={className}><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.97-3.284"/><path d="M17.97 14.716A4 4 0 0 1 16 18"/></IconWrapper>);
+        const AlertTriangle = ({ className }) => (<IconWrapper className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></IconWrapper>);
+        const Info = ({ className }) => (<IconWrapper className={className}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></IconWrapper>);
+        const ChevronDown = ({ className }) => (<IconWrapper className={className}><path d="m6 9 6 6 6-6"/></IconWrapper>);
+        const ChevronUp = ({ className }) => (<IconWrapper className={className}><path d="m18 15-6-6-6 6"/></IconWrapper>);
+
+        // Initial Templates
+        const INITIAL_TEMPLATES = [
+            {
+                id: 1,
+                title: "視覚インパクト型",
+                subtitle: "文字を減らし、ビジュアルで魅せる",
+                icon: <ImageIcon className="w-6 h-6 text-pink-500" />,
+                bg: "bg-pink-50",
+                borderColor: "border-pink-200",
+                description: "スライドの文字量を極限まで減らし、1スライド1メッセージを徹底させます。画像生成AIへの指示も含めるよう要求します。",
+                content: "あなたは世界的なプレゼンテーションデザイナーです。以下の資料をもとに、TED Talkのような「視覚的インパクト」を最優先したスライド構成を作成してください。\n\n【制約事項】\n1. 1枚のスライドにつき、メッセージは「1文（20文字以内）」に絞ってください。\n2. 説明文は極力排除し、代わりにそのスライドに配置すべき「具体的な画像のイメージ（画像生成AIへのプロンプト）」を英語で記述してください。\n3. 配色は「白・黒・アクセントカラー1色」のみで構成するよう指示してください。\n\n【出力形式】\n- スライド番号\n- メインメッセージ（大文字）\n- ビジュアルイメージの指示\n- スピーカーが話すべき補足内容（簡潔に）"
+            },
+            {
+                id: 2,
+                title: "ストーリーテリング型",
+                subtitle: "共感と感動で聴衆を惹き込む",
+                icon: <BookOpen className="w-6 h-6 text-purple-500" />,
+                bg: "bg-purple-50",
+                borderColor: "border-purple-200",
+                description: "単なる事実の羅列ではなく、聴衆の感情を動かす「物語」として構成し直します。",
+                content: "あなたは優秀な脚本家です。この資料の内容を、聴衆の心を動かす「一本の映画のようなストーリー」として再構成し、スライド案を作成してください。\n\n【構成の指針】\n1. 導入（Hook）：聴衆が抱えている「痛み」や「疑問」への共感から始めてください。\n2. 葛藤（Conflict）：解決策を提示する前に、課題の深刻さや失敗例をドラマチックに描写してください。\n3. 解決（Resolution）：あなたの提案がどのように世界を変えるか、カタルシスを感じさせる表現で締めてください。\n\n【トーン＆マナー】\n- 専門用語は使わず、比喩表現（メタファー）を多用してください。\n- 感情に訴えかける言葉を選んでください。"
+            },
+            {
+                id: 3,
+                title: "詳細解説・講義型",
+                subtitle: "論理的で信頼性の高い資料に",
+                icon: <Presentation className="w-6 h-6 text-blue-500" />,
+                bg: "bg-blue-50",
+                borderColor: "border-blue-200",
+                description: "授業や研修に最適。論理構成を明確にし、情報の抜け漏れを防ぐ詳細な構成にします。",
+                content: "あなたは論理的思考に長けた大学教授です。この資料をもとに、学生が深く理解できる「講義用スライド」の構成案を作成してください。\n\n【要件】\n1. 結論から述べる（PREP法）構成を徹底してください。\n2. 各主張には必ず「根拠となるデータ」や「具体例」を紐付けてください。\n3. 専門用語が出た場合は、必ずそのスライド内で用語解説を入れてください。\n4. 各章の終わりに「理解度確認のためのクイズ」を1問提案してください。\n\n【目指すゴール】\n- 読んだだけで内容が100%理解できる、自立した資料にすること。"
+            }
+        ];
+
+        const StepCard = ({ number, title, text }) => (
+            <div className="flex flex-col items-start p-4 rounded-xl bg-white/50 border border-white/60 shadow-sm">
+                <div className="flex items-center gap-3 mb-2">
+                    <span className="flex items-center justify-center w-8 h-8 rounded-full bg-brand-600 text-white font-bold text-sm shadow-md">
+                        {number}
+                    </span>
+                    <h3 className="font-bold text-slate-800 text-sm">{title}</h3>
                 </div>
+                <p className="text-xs text-slate-600 leading-relaxed pl-11">{text}</p>
             </div>
+        );
 
-            <div class="flex items-center gap-3">
-                <button onclick="document.getElementById('fileInput').click()" class="hidden md:flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-bold text-slate-600 hover:bg-slate-100 transition-all hover:shadow-inner">
-                    <i data-lucide="image-plus" class="w-4 h-4"></i> 開く
-                </button>
-                <input type="file" id="fileInput" class="hidden" accept="image/*">
-                <!-- スマホ用 開くボタン -->
-                <button onclick="document.getElementById('fileInput').click()" class="md:hidden p-2 rounded-full text-slate-600 hover:bg-slate-100 transition-colors"><i data-lucide="image-plus" class="w-6 h-6"></i></button>
-
-                <!-- 編集時のみ表示するボタン群 -->
-                <div id="actionButtons" class="hidden flex items-center gap-3">
-                    <div class="h-8 w-px bg-slate-200 mx-1 hidden md:block"></div>
-                    <button onclick="saveImage()" class="flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-bold rounded-full hover:bg-brand-700 shadow-lg shadow-brand-600/25 transition-all active:scale-95 transform hover:-translate-y-0.5">
-                        <i data-lucide="download" class="w-4 h-4"></i> <span>保存</span>
+        const ApiTermsOfUse = () => {
+            const [isOpen, setIsOpen] = useState(false);
+            
+            return (
+                <div className="mt-4 border border-brand-200 rounded-lg bg-brand-50/50 overflow-hidden">
+                    <button 
+                        onClick={() => setIsOpen(!isOpen)}
+                        className="w-full flex items-center justify-between p-3 text-left hover:bg-brand-100/50 transition-colors"
+                    >
+                        <div className="flex items-center gap-2">
+                            <Info className="w-4 h-4 text-brand-600" />
+                            <span className="text-xs font-bold text-slate-700">セキュリティと利用上の注意（必ずお読みください）</span>
+                        </div>
+                        {isOpen ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
                     </button>
+                    
+                    {isOpen && (
+                        <div className="p-4 bg-white border-t border-brand-100 text-xs text-slate-600 space-y-3 animate-fade-in">
+                            <div className="flex gap-2">
+                                <span className="font-bold text-brand-600 shrink-0">1. 仕組み</span>
+                                <p>このアプリは、あなたのブラウザから直接GoogleのAIサーバー（Gemini API）に接続します。開発者があなたのデータやAPIキーを見ることはありません。</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="font-bold text-brand-600 shrink-0">2. キーの管理</span>
+                                <p>入力されたAPIキーは一時的にブラウザのメモリに保持されるだけで、どこにも保存されません。ページを再読み込みしたり閉じたりすると消去されます。</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="font-bold text-brand-600 shrink-0">3. 自己責任</span>
+                                <p>外部サーバーには送信されませんが、万が一の漏えいリスク（拡張機能やマルウェア等）を考慮し、他言無用の機密情報（個人情報・未公開データ等）を含むファイルでの利用は避けてください。</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="font-bold text-brand-600 shrink-0">4. 制限</span>
+                                <p>無料枠のAPIキーを使用する場合、利用回数制限（レートリミット）によりエラーが出ることがあります。その場合は時間を置いて再試行してください。</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <span className="font-bold text-brand-600 shrink-0">5. 免責</span>
+                                <p>生成される内容はAIの提案であり、事実の正確性や結果を保証するものではありません。</p>
+                            </div>
+                        </div>
+                    )}
                 </div>
-            </div>
-        </div>
-    </header>
+            );
+        }
 
-    <div class="flex flex-1 flex-col-reverse md:flex-row overflow-hidden relative">
-        
-        <!-- サイドバー (編集時のみ表示) -->
-        <!-- pb-[calc(env(safe-area-inset-bottom)+48px)] で下部を大幅に底上げしてSafariバー被り回避 -->
-        <aside id="sidebar" class="hidden w-full md:w-[96px] bg-white/70 backdrop-blur-2xl border-t md:border-t-0 md:border-r border-white/20 md:flex-col z-20 shadow-xl shadow-slate-200/50 shrink-0 items-center justify-between md:justify-start py-3 md:py-8 px-4 md:px-0 gap-2 md:gap-6 overflow-x-auto no-scrollbar pb-[calc(env(safe-area-inset-bottom)+48px)] md:pb-6">
+        const App = () => {
+            const [file, setFile] = useState(null);
+            const [images, setImages] = useState([]); // Array of base64 images
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [processStatus, setProcessStatus] = useState("");
+            const [activeTab, setActiveTab] = useState('preview'); // 'preview' | 'prompts'
+            const [copiedId, setCopiedId] = useState(null);
             
-            <!-- メインツール -->
-            <div class="flex md:flex-col gap-2 md:gap-4 items-center">
-                <button onclick="setMode('select')" id="btn-select" class="tool-btn active w-12 h-12 flex items-center justify-center" title="選択 (V)">
-                    <i data-lucide="mouse-pointer-2" class="w-6 h-6"></i>
-                </button>
+            // Gemini API related states
+            const [apiKey, setApiKey] = useState("");
+            const [showApiInput, setShowApiInput] = useState(false);
+            const [isAnalyzing, setIsAnalyzing] = useState(false);
+            const [errorMsg, setErrorMsg] = useState("");
+            const [prompts, setPrompts] = useState(INITIAL_TEMPLATES);
+
+            // Handle File Drop/Select
+            const handleFileChange = async (selectedFile) => {
+                if (!selectedFile) return;
+                if (selectedFile.type !== 'application/pdf') {
+                    alert('PDFファイルを選択してください。NotebookLMからエクスポートしたPDFが最適です。');
+                    return;
+                }
+
+                setFile(selectedFile);
+                setImages([]);
+                setPrompts(INITIAL_TEMPLATES); // Reset prompts to defaults
+                setIsProcessing(true);
+                setProcessStatus("PDFを読み込んでいます...");
+                setErrorMsg("");
+                setShowApiInput(false);
+
+                try {
+                    const arrayBuffer = await selectedFile.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    const numPages = pdf.numPages;
+                    const newImages = [];
+
+                    for (let i = 1; i <= numPages; i++) {
+                        setProcessStatus(`スライド変換中... (${i}/${numPages})`);
+                        const page = await pdf.getPage(i);
+                        
+                        const scale = 2; 
+                        const viewport = page.getViewport({ scale });
+                        
+                        const canvas = document.createElement('canvas');
+                        const context = canvas.getContext('2d');
+                        canvas.height = viewport.height;
+                        canvas.width = viewport.width;
+
+                        await page.render({
+                            canvasContext: context,
+                            viewport: viewport
+                        }).promise;
+
+                        newImages.push(canvas.toDataURL('image/jpeg', 0.85));
+                    }
+
+                    setImages(newImages);
+                    setProcessStatus("");
+                    setIsProcessing(false);
+                } catch (error) {
+                    console.error(error);
+                    alert("PDFの変換に失敗しました。ファイルが壊れているか、保護されている可能性があります。");
+                    setIsProcessing(false);
+                    setFile(null);
+                }
+            };
+
+            const onDrop = (e) => {
+                e.preventDefault();
+                const droppedFile = e.dataTransfer.files[0];
+                handleFileChange(droppedFile);
+            };
+
+            const downloadZip = async () => {
+                if (images.length === 0) return;
                 
-                <button onclick="setMode('rect')" id="btn-rect" class="tool-btn w-12 h-12 flex items-center justify-center text-slate-500" title="枠線 (R)">
-                    <i data-lucide="square" class="w-6 h-6"></i>
-                </button>
-                <button onclick="setMode('arrow')" id="btn-arrow" class="tool-btn w-12 h-12 flex items-center justify-center text-slate-500" title="矢印 (A)">
-                    <i data-lucide="arrow-up-right" class="w-6 h-6"></i>
-                </button>
-                <button onclick="setMode('text')" id="btn-text" class="tool-btn w-12 h-12 flex items-center justify-center text-slate-500" title="文字 (T)">
-                    <i data-lucide="type" class="w-6 h-6"></i>
-                </button>
+                const zip = new JSZip();
+                const folder = zip.folder("slides");
                 
-                <button onclick="toggleSizePicker()" id="btn-size" class="tool-btn w-12 h-12 flex flex-col items-center justify-center gap-0.5 text-slate-500" title="サイズ設定">
-                    <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
-                </button>
-
-                <button onclick="toggleColorPicker()" id="btn-color" class="tool-btn w-12 h-12 flex items-center justify-center relative hover:bg-white" title="色設定">
-                    <div id="current-color-indicator" class="w-6 h-6 rounded-full border border-black/5 shadow-sm" style="background-color: #ef4444;"></div>
-                </button>
-            </div>
-
-            <div class="tool-separator hidden md:block"></div>
-
-            <!-- マスク & 削除 -->
-            <div class="flex md:flex-col gap-2 md:gap-4 items-center">
-                <button onclick="setMode('mask-black')" id="btn-mask-black" class="tool-btn w-12 h-12 flex items-center justify-center text-slate-500" title="塗りつぶし">
-                    <div class="w-6 h-6 bg-slate-800 rounded-lg shadow-sm"></div>
-                </button>
-                <button onclick="setMode('mask-mosaic')" id="btn-mask-mosaic" class="tool-btn w-12 h-12 flex items-center justify-center text-slate-500" title="モザイク">
-                    <i data-lucide="grip" class="w-6 h-6"></i>
-                </button>
-                
-                <div class="tool-separator"></div>
-
-                <button onclick="deleteObject()" class="w-12 h-12 flex items-center justify-center rounded-2xl bg-rose-50 text-rose-500 hover:bg-rose-100 hover:text-rose-600 transition-colors" title="削除 (Del)">
-                    <i data-lucide="trash-2" class="w-6 h-6"></i>
-                </button>
-                <button onclick="resetCanvas()" class="w-12 h-12 flex items-center justify-center rounded-2xl text-slate-400 hover:bg-white hover:text-slate-600 transition-colors" title="全消去">
-                    <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
-                </button>
-            </div>
-        </aside>
-
-        <!-- メインエリア -->
-        <main class="flex-1 relative flex flex-col overflow-hidden">
-            
-            <!-- LP風 初期画面 -->
-            <div id="emptyState" class="absolute inset-0 z-20 flex flex-col items-center overflow-auto custom-scrollbar lp-bg">
-                <div class="mesh-gradient">
-                    <div class="mesh-blob bg-blue-400 w-96 h-96 top-0 left-0 animate-blob"></div>
-                    <div class="mesh-blob bg-purple-400 w-96 h-96 bottom-0 right-0 animate-blob" style="animation-delay: -5s; animation-direction: reverse;"></div>
-                    <div class="mesh-blob bg-pink-300 w-64 h-64 bottom-[20%] left-[20%] animate-blob" style="animation-delay: -2s;"></div>
-                </div>
-
-                <div class="max-w-5xl w-full text-center space-y-16 py-10 px-6 relative z-10 pt-24 md:pt-32 pb-20">
-                    <div class="space-y-8 animate-fade-in-up">
-                        <h2 class="text-4xl md:text-7xl font-black text-slate-900 leading-tight tracking-tight drop-shadow-sm">
-                            画像の注釈を、<br class="md:hidden">
-                            <span class="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600">もっと美しく。</span>
-                        </h2>
-                        <p class="text-slate-600 font-medium text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
-                            インストール不要、ブラウザ完結のセキュアなエディタ。<br class="hidden md:block">
-                            美しい矢印や枠線、モザイクを瞬時に追加して共有。
-                        </p>
-                    </div>
-
-                    <div class="grid md:grid-cols-3 gap-8 text-left max-w-4xl mx-auto">
-                        <div class="step-card animate-fade-in-up" style="animation-delay: 0.1s">
-                            <div class="step-icon-wrapper"><i data-lucide="upload" class="w-6 h-6"></i></div>
-                            <h3 class="font-bold text-xl mb-3 text-slate-800">1. Upload</h3>
-                            <p class="text-sm text-slate-500 leading-relaxed font-medium">画像をドラッグ＆ドロップ。高画質のままブラウザで読み込みます。</p>
-                        </div>
-                        <div class="step-card animate-fade-in-up" style="animation-delay: 0.2s">
-                            <div class="step-icon-wrapper"><i data-lucide="edit-3" class="w-6 h-6"></i></div>
-                            <h3 class="font-bold text-xl mb-3 text-slate-800">2. Edit</h3>
-                            <p class="text-sm text-slate-500 leading-relaxed font-medium">矢印で強調したり、プライバシー情報をモザイクで隠したり。</p>
-                        </div>
-                        <div class="step-card animate-fade-in-up" style="animation-delay: 0.3s">
-                            <div class="step-icon-wrapper"><i data-lucide="download-cloud" class="w-6 h-6"></i></div>
-                            <h3 class="font-bold text-xl mb-3 text-slate-800">3. Export</h3>
-                            <p class="text-sm text-slate-500 leading-relaxed font-medium">画質を劣化させずに保存。ワンクリックで完了します。</p>
-                        </div>
-                    </div>
-
-                    <div class="upload-area w-full max-w-2xl mx-auto p-16 flex flex-col items-center justify-center group animate-fade-in-up cursor-pointer" style="animation-delay: 0.4s" onclick="document.getElementById('fileInput').click()">
-                        <div class="w-24 h-24 bg-indigo-50 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform shadow-inner">
-                            <i data-lucide="image-plus" class="w-10 h-10 text-indigo-600"></i>
-                        </div>
-                        <h3 class="text-2xl font-bold text-slate-800 mb-2">画像ファイルをドロップ</h3>
-                        <p class="text-slate-400 font-medium mb-8">またはクリックしてファイルを選択</p>
-                        <button class="inline-flex items-center gap-2 text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 px-8 py-4 rounded-full shadow-xl shadow-slate-900/20 transition-all active:scale-95">
-                            画像を選択する
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- キャンバスエリア -->
-            <div id="dropZone" class="hidden flex-1 overflow-auto custom-scrollbar relative z-10 flex-col w-full h-full bg-[#f1f5f9]">
-                <div class="absolute inset-0 z-0 opacity-[0.4]" style="background-image: radial-gradient(#9ca3af 1.5px, transparent 1.5px); background-size: 24px 24px;"></div>
-                
-                <div class="flex-grow flex items-center justify-center min-w-min min-h-min p-8 md:p-16 relative z-10">
-                    <div id="canvasWrapper" class="relative shadow-2xl shadow-slate-900/10 rounded-xl overflow-hidden bg-white ring-1 ring-black/5">
-                        <canvas id="c"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- ズームコントロール -->
-            <div id="zoomControls" class="hidden absolute bottom-8 left-1/2 -translate-x-1/2 items-center gap-1 bg-white/80 backdrop-blur-md shadow-float p-1.5 rounded-full border border-white/60 z-30 transition-all pb-[env(safe-area-inset-bottom)]">
-                <button onclick="zoomOut()" class="w-10 h-10 rounded-full hover:bg-white flex items-center justify-center text-slate-600 transition-colors"><i data-lucide="minus" class="w-5 h-5"></i></button>
-                <span id="zoomLevel" class="text-sm font-bold text-slate-800 w-14 text-center select-none tabular-nums">100%</span>
-                <button onclick="zoomIn()" class="w-10 h-10 rounded-full hover:bg-white flex items-center justify-center text-slate-600 transition-colors"><i data-lucide="plus" class="w-5 h-5"></i></button>
-                <div class="w-px h-5 bg-slate-300 mx-2"></div>
-                <button onclick="fitToScreen()" class="px-5 py-2 rounded-full bg-slate-100 hover:bg-white text-xs font-bold text-slate-700 transition-colors uppercase tracking-wide">Fit</button>
-            </div>
-
-            <!-- サイズ設定パネル -->
-            <div id="sizePickerPanel" class="hidden absolute glass-panel z-40 w-full md:w-72 md:rounded-3xl p-6 left-0 bottom-0 md:left-[112px] md:bottom-auto md:top-24 origin-bottom-left">
-                <div class="w-12 h-1.5 bg-slate-300/50 rounded-full mx-auto mb-6 md:hidden"></div>
-                <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2" id="size-label">Line Width</div>
-                <div class="drum-container mb-5">
-                    <div class="drum-mask"></div><div class="drum-highlight"></div>
-                    <div class="drum-scroll no-scrollbar" id="drum-scroller"></div>
-                </div>
-                <div class="mb-5 px-1"><input type="range" min="1" max="100" value="4" id="sheet-slider" oninput="setSize(this.value)" class="w-full"></div>
-                <div class="flex items-center justify-between pt-4 border-t border-slate-200" id="rounded-option">
-                    <span class="text-sm font-bold text-slate-600">角丸 (Rounded)</span>
-                    <label class="relative inline-flex items-center cursor-pointer">
-                        <input type="checkbox" id="rounded-toggle" class="sr-only peer" checked onchange="setRounded(this.checked)">
-                        <div class="w-12 h-7 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-brand-600 transition-colors shadow-inner"></div>
-                    </label>
-                </div>
-                <button onclick="closeAllModals()" class="mt-6 w-full py-3.5 bg-slate-900 text-white rounded-2xl text-base font-bold md:hidden shadow-xl shadow-slate-900/10">完了</button>
-            </div>
-
-            <!-- 色設定パネル -->
-            <div id="colorPickerPanel" class="hidden absolute glass-panel z-40 w-full md:w-72 md:rounded-3xl p-6 left-0 bottom-0 md:left-[112px] md:bottom-auto md:top-64 origin-bottom-left">
-                <div class="w-12 h-1.5 bg-slate-300/50 rounded-full mx-auto mb-6 md:hidden"></div>
-                <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-4 text-center md:text-left">Color</div>
-                <div class="grid grid-cols-5 gap-4 mb-6 place-items-center">
-                    <button onclick="setColor('#ef4444')" class="w-10 h-10 rounded-full bg-red-500 hover:scale-110 transition-transform color-dot active shadow-sm"></button>
-                    <button onclick="setColor('#2563eb')" class="w-10 h-10 rounded-full bg-blue-600 hover:scale-110 transition-transform color-dot shadow-sm"></button>
-                    <button onclick="setColor('#10b981')" class="w-10 h-10 rounded-full bg-emerald-500 hover:scale-110 transition-transform color-dot shadow-sm"></button>
-                    <button onclick="setColor('#f59e0b')" class="w-10 h-10 rounded-full bg-amber-500 hover:scale-110 transition-transform color-dot shadow-sm"></button>
-                    <button onclick="setColor('#1e293b')" class="w-10 h-10 rounded-full bg-slate-800 hover:scale-110 transition-transform color-dot shadow-sm"></button>
-                    <button onclick="setColor('#ffffff')" class="w-10 h-10 rounded-full bg-white border border-slate-200 hover:scale-110 transition-transform color-dot shadow-sm"></button>
-                    <button onclick="setColor('#ec4899')" class="w-10 h-10 rounded-full bg-pink-500 hover:scale-110 transition-transform color-dot shadow-sm"></button>
-                    <button onclick="activateEyeDropper()" class="w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors shadow-sm" title="スポイト"><i data-lucide="pipette" class="w-5 h-5"></i></button>
-                </div>
-                <div class="color-input-wrapper mb-2">
-                    <input type="color" id="native-color-picker" oninput="setColor(this.value)">
-                    <div class="absolute inset-0 flex items-center justify-center pointer-events-none text-xs font-bold text-slate-500 bg-slate-50/50 backdrop-blur-sm">Custom Color</div>
-                </div>
-                <button onclick="closeAllModals()" class="mt-6 w-full py-3.5 bg-slate-900 text-white rounded-2xl text-base font-bold md:hidden shadow-xl shadow-slate-900/10">完了</button>
-            </div>
-
-            <div id="modalOverlay" onclick="closeAllModals()" class="hidden absolute inset-0 bg-slate-900/20 backdrop-blur-[2px] z-30 transition-opacity"></div>
-        </main>
-    </div>
-
-    <!-- トースト通知 -->
-    <div id="toast">
-        <div id="toast-icon-bg" class="bg-emerald-100 text-emerald-600 p-1 rounded-full"><i data-lucide="check" class="w-4 h-4 stroke-[3]"></i></div>
-        <span id="toastMsg" class="text-sm font-bold text-white">保存しました</span>
-    </div>
-
-    <script>
-        lucide.createIcons();
-        const canvas = new fabric.Canvas('c', { selection: true, preserveObjectStacking: true, backgroundColor: '#ffffff', uniformScaling: false });
-        fabric.Object.prototype.set({ transparentCorners: false, cornerColor: '#ffffff', cornerStrokeColor: '#2563eb', borderColor: '#2563eb', cornerSize: 12, padding: 8, cornerStyle: 'circle', borderDashArray: [4, 4], borderOpacityWhenMoving: 0.5, uniformScaling: false });
-        
-        let STATE = { color: '#ef4444', width: 4, fontSize: 32, mosaicSize: 8, rounded: true, maskColor: '#1e293b', mode: 'select', img: null, zoom: 1.0, scaleFactor: 1.0 };
-        
-        // ドラムロール生成
-        const drumScroller = document.getElementById('drum-scroller');
-        const SIZE_OPTIONS = [2, 4, 6, 8, 10, 12, 16, 20, 24, 32, 40, 48, 64, 80, 96, 128, 160];
-        SIZE_OPTIONS.forEach(w => {
-            const div = document.createElement('div'); div.className = 'drum-item'; div.textContent = w; div.dataset.value = w;
-            div.onclick = () => { div.scrollIntoView({behavior: 'smooth', block: 'center'}); setSize(w); };
-            drumScroller.appendChild(div);
-        });
-        
-        let drumTimeout;
-        drumScroller.addEventListener('scroll', () => {
-            clearTimeout(drumTimeout);
-            drumTimeout = setTimeout(() => {
-                const cRect = drumScroller.getBoundingClientRect(); const cy = cRect.top + cRect.height/2;
-                let closest = null, minDiff = Infinity;
-                document.querySelectorAll('.drum-item').forEach(item => {
-                    const rect = item.getBoundingClientRect();
-                    const diff = Math.abs(cy - (rect.top + rect.height/2));
-                    item.classList.remove('active');
-                    if(diff < minDiff) { minDiff = diff; closest = item; }
+                images.forEach((img, index) => {
+                    const data = img.split(',')[1];
+                    folder.file(`slide_${String(index + 1).padStart(2, '0')}.jpg`, data, { base64: true });
                 });
-                if(closest) { closest.classList.add('active'); setSize(closest.dataset.value); }
-            }, 50);
-        });
 
-        function toggleSizePicker() { togglePanel('sizePickerPanel'); updatePanelContent(); }
-        function toggleColorPicker() { togglePanel('colorPickerPanel'); }
-        function togglePanel(id) {
-            const el = document.getElementById(id); const overlay = document.getElementById('modalOverlay');
-            const isOpen = !el.classList.contains('hidden');
-            closeAllModals();
-            if(!isOpen) { el.classList.remove('hidden'); el.classList.add('panel-enter'); overlay.classList.remove('hidden'); }
-        }
-        function closeAllModals() {
-            ['sizePickerPanel', 'colorPickerPanel'].forEach(pid => document.getElementById(pid).classList.add('hidden'));
-            document.getElementById('modalOverlay').classList.add('hidden');
-        }
-
-        function updatePanelContent() {
-            const obj = canvas.getActiveObject();
-            const isText = STATE.mode === 'text' || (obj && obj.type === 'i-text');
-            const isMosaic = STATE.mode === 'mask-mosaic' || (obj && obj.isMosaic);
-            let label = 'Line Width'; if(isText) label = 'Text Size'; if(isMosaic) label = 'Mosaic Size';
-            document.getElementById('size-label').textContent = label;
-            document.getElementById('rounded-option').style.display = (isText||isMosaic) ? 'none' : 'flex';
-            let val = STATE.width; if(isText) val = STATE.fontSize; if(isMosaic) val = STATE.mosaicSize;
-            setTimeout(() => {
-                const items = Array.from(document.querySelectorAll('.drum-item'));
-                const target = items.reduce((p, c) => Math.abs(c.dataset.value - val) < Math.abs(p.dataset.value - val) ? c : p);
-                if(target) target.scrollIntoView({block: 'center'});
-            }, 50);
-        }
-
-        function setMode(m) {
-            STATE.mode = m; document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-            const btn = document.getElementById(`btn-${m}`); if(btn) btn.classList.add('active');
-            canvas.isDrawingMode = false; canvas.selection = (m === 'select'); canvas.defaultCursor = m === 'select' ? 'default' : 'crosshair';
-            canvas.getObjects().forEach(o => { o.selectable = (m === 'select'); o.evented = (m === 'select'); });
-            canvas.requestRenderAll();
-        }
-
-        function setColor(val) {
-            STATE.color = val; STATE.maskColor = val;
-            document.getElementById('current-color-indicator').style.backgroundColor = val;
-            document.getElementById('native-color-picker').value = val;
-            document.querySelectorAll('.color-dot').forEach(el => el.classList.remove('active'));
-            const obj = canvas.getActiveObject();
-            if(obj) {
-                if(obj.type==='i-text'||obj.type==='text') obj.set({fill: val});
-                else if(obj.fill && obj.fill!=='transparent') obj.set({fill: val});
-                else obj.set({stroke: val});
-                canvas.requestRenderAll();
-            }
-        }
-        function setSize(val) {
-            const v = parseInt(val); const obj = canvas.getActiveObject();
-            const isText = STATE.mode === 'text' || (obj && obj.type === 'i-text');
-            const isMosaic = STATE.mode === 'mask-mosaic' || (obj && obj.isMosaic);
-            document.getElementById('sheet-slider').value = v;
-            if(isText) { STATE.fontSize = v; if(obj && obj.type==='i-text') { obj.set({fontSize: v * STATE.scaleFactor}); canvas.requestRenderAll(); } }
-            else if(isMosaic) { STATE.mosaicSize = v; if(obj && obj.isMosaic) updateMosaic(obj); }
-            else { STATE.width = v; if(obj && obj.stroke) { obj.set({strokeWidth: v * STATE.scaleFactor}); canvas.requestRenderAll(); } }
-        }
-        function setRounded(v) {
-            STATE.rounded = v; const obj = canvas.getActiveObject();
-            if(obj && obj.type==='rect' && obj.fill==='transparent') { const r = v ? 5 * STATE.scaleFactor : 0; obj.set({rx:r, ry:r}); canvas.requestRenderAll(); }
-        }
-
-        canvas.on('selection:created', syncState); canvas.on('selection:updated', syncState);
-        function syncState(e) {
-            const obj = e.selected[0]; if(!obj) return;
-            const col = obj.stroke || obj.fill; if(col && col!=='transparent' && col.startsWith('#')) setColor(col);
-            let val = STATE.width;
-            if(obj.type === 'i-text') val = Math.round(obj.fontSize / STATE.scaleFactor);
-            else if(obj.isMosaic && obj.filters && obj.filters[0]) val = Math.round(obj.filters[0].blocksize / STATE.scaleFactor);
-            else if(obj.strokeWidth) val = Math.round(obj.strokeWidth / STATE.scaleFactor);
-            setSize(val); if(!document.getElementById('sizePickerPanel').classList.contains('hidden')) updatePanelContent();
-        }
-
-        canvas.on('mouse:down', opt => {
-            if(STATE.mode === 'select') return;
-            const p = canvas.getPointer(opt.e);
-            const sf = STATE.scaleFactor;
-            const sw = STATE.width * sf;
-            const sr = STATE.rounded ? 5 * sf : 0;
-            const size = 100 * sf;
-            
-            if(STATE.mode === 'rect') addToCanvas(new fabric.Rect({ left: p.x, top: p.y, width: size, height: size*0.6, fill: 'transparent', stroke: STATE.color, strokeWidth: sw, rx: sr, ry: sr, strokeUniform: true }));
-            else if(STATE.mode === 'arrow') { const hs = 10*sf + sw*0.5; addToCanvas(new fabric.Path(`M 0 0 L ${size} 0 M ${size-hs} -${hs} L ${size} 0 L ${size-hs} ${hs}`, { left: p.x, top: p.y, fill: 'transparent', stroke: STATE.color, strokeWidth: sw, strokeLineCap: 'round', strokeLineJoin: 'round' })); }
-            else if(STATE.mode === 'text') { 
-                const t = new fabric.IText('', { 
-                    left: p.x, top: p.y, fontFamily: 'Noto Sans JP', fontSize: STATE.fontSize*sf, fill: STATE.color, fontWeight: 'bold' 
-                }); 
-                t.set({uniformScaling: true}); addToCanvas(t); t.bringToFront(); t.enterEditing(); if(t.hiddenTextarea) t.hiddenTextarea.focus();
-            }
-            else if(STATE.mode === 'mask-black') addToCanvas(new fabric.Rect({ left: p.x, top: p.y, width: size, height: size*0.4, fill: STATE.maskColor, rx: 0, ry: 0 }));
-            else if(STATE.mode === 'mask-mosaic') addMosaic(p.x, p.y);
-            setMode('select');
-        });
-
-        function addToCanvas(obj) {
-            if(obj.type!=='i-text') obj.setControlsVisibility({mt:true, mb:true, ml:true, mr:true, bl:true, br:true, tl:true, tr:true, mtr:true});
-            else obj.setControlsVisibility({mt:false, mb:false, ml:false, mr:false, bl:true, br:true, tl:true, tr:true, mtr:true});
-            canvas.add(obj); 
-            canvas.setActiveObject(obj);
-            if(obj.type !== 'i-text') { canvas.getObjects().forEach(o => { if(o.type === 'i-text') o.bringToFront(); }); }
-        }
-
-        function addMosaic(x, y) {
-            if(!STATE.img) return;
-            const w = 120 * STATE.scaleFactor; const h = 60 * STATE.scaleFactor;
-            fabric.Image.fromURL(cropOriginalImage(x, y, w, h), img => {
-                img.set({left: x, top: y, width: w, height: h, isMosaic: true});
-                img.filters.push(new fabric.Image.filters.Pixelate({blocksize: STATE.mosaicSize * STATE.scaleFactor}));
-                img.applyFilters(); addToCanvas(img);
-            });
-        }
-        canvas.on('object:modified', e => { if(e.target && e.target.isMosaic) updateMosaic(e.target); });
-        function cropOriginalImage(l, t, w, h) {
-            const c = document.createElement('canvas'); c.width = w; c.height = h;
-            c.getContext('2d').drawImage(STATE.img.getElement(), l, t, w, h, 0, 0, w, h);
-            return c.toDataURL();
-        }
-        function updateMosaic(obj) {
-            const newImg = new Image();
-            newImg.onload = () => {
-                obj.setElement(newImg); obj.filters = [new fabric.Image.filters.Pixelate({blocksize: STATE.mosaicSize * STATE.scaleFactor})];
-                obj.applyFilters(); obj.set({scaleX: 1, scaleY: 1}); canvas.requestRenderAll();
-            };
-            newImg.src = cropOriginalImage(obj.left, obj.top, obj.width * obj.scaleX, obj.height * obj.scaleY);
-        }
-
-        function deleteObject() {
-            const actives = canvas.getActiveObjects();
-            if(actives.length) { actives.forEach(o => canvas.remove(o)); canvas.discardActiveObject(); }
-            else showToast('削除する要素がありません', true);
-        }
-        document.addEventListener('keydown', e => {
-            if((e.key==='Delete'||e.key==='Backspace') && canvas.getActiveObject() && !canvas.getActiveObject().isEditing) deleteObject();
-            if(e.ctrlKey || e.metaKey) {
-                if(e.key==='='||e.key==='+') { e.preventDefault(); zoomIn(); }
-                if(e.key==='-') { e.preventDefault(); zoomOut(); }
-                if(e.key==='0') { e.preventDefault(); fitToScreen(); }
-            }
-        });
-        document.getElementById('dropZone').addEventListener('wheel', e => {
-            if(e.ctrlKey || e.metaKey) { e.preventDefault(); let z = STATE.zoom * (0.999 ** e.deltaY); if(z>5)z=5; if(z<0.1)z=0.1; setZoom(z); }
-        }, {passive:false});
-        document.getElementById('fileInput').addEventListener('change', handleFile);
-        const dz = document.querySelector('.upload-area');
-        if(dz) {
-            dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
-            dz.addEventListener('dragleave', e => { e.preventDefault(); dz.classList.remove('drag-over'); });
-            dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag-over'); if(e.dataTransfer.files[0]) handleFile({target:{files:[e.dataTransfer.files[0]]}}); });
-        }
-        document.addEventListener('paste', e => {
-            const items = e.clipboardData.items;
-            for(let i=0; i<items.length; i++) if(items[i].type.indexOf('image')!==-1) loadBlob(items[i].getAsFile());
-        });
-
-        function handleFile(e) {
-            const f = e.target.files[0]; if(!f) return;
-            if(f.type.startsWith('image/')) loadBlob(f); else showToast('画像のみ対応しています', true);
-            e.target.value = '';
-        }
-        function loadBlob(blob) {
-            const r = new FileReader();
-            r.onload = f => { const i = new Image(); i.src = f.target.result; i.onload = () => initEditor(i); };
-            r.readAsDataURL(blob);
-        }
-        function showEmptyState() {
-            document.getElementById('emptyState').classList.remove('hidden');
-            
-            const uiElements = ['dropZone', 'zoomControls', 'closeBtn', 'actionButtons', 'sidebar'];
-            uiElements.forEach(id => {
-                const el = document.getElementById(id);
-                if(el) {
-                    el.classList.add('hidden');
-                    el.classList.remove('flex');
-                }
-            });
-            
-            closeAllModals();
-        }
-
-        function showEditorState() {
-            document.getElementById('emptyState').classList.add('hidden');
-            
-            const uiElements = ['dropZone', 'zoomControls', 'closeBtn', 'actionButtons', 'sidebar'];
-            uiElements.forEach(id => {
-                const el = document.getElementById(id);
-                if(el) {
-                    el.classList.remove('hidden');
-                    el.classList.add('flex');
-                }
-            });
-        }
-
-        function hardResetCanvas() {
-            // Canvasクリア
-            try {
-                canvas.discardActiveObject();
-                const objs = canvas.getObjects();
-                if (objs && objs.length) {
-                    // コピー配列を作って削除
-                    [...objs].forEach(o => canvas.remove(o));
-                }
-                canvas.clear(); 
-            } catch (e) { console.error(e); }
-
-            // STATEリセット
-            STATE = { 
-                color: '#ef4444', 
-                width: 4, 
-                fontSize: 32, 
-                mosaicSize: 8, 
-                rounded: true, 
-                maskColor: '#1e293b', 
-                mode: 'select', 
-                img: null, 
-                zoom: 1.0, 
-                scaleFactor: 1.0 
-            };
-
-            // Canvasリセット (安全なサイズへ)
-            canvas.setZoom(1);
-            canvas.setDimensions({ width: 800, height: 600 });
-            canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas));
-
-            // UIリセット
-            const zoomLabel = document.getElementById('zoomLevel');
-            if (zoomLabel) zoomLabel.textContent = '100%';
-            
-            const sizeSlider = document.getElementById('sheet-slider');
-            if (sizeSlider) sizeSlider.value = '4';
-
-            // ツールボタンリセット
-            document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
-            const selBtn = document.getElementById('btn-select');
-            if(selBtn) selBtn.classList.add('active');
-
-            // ファイル入力リセット
-            const fi = document.getElementById('fileInput');
-            if (fi) fi.value = '';
-        }
-
-        function resetEditor() {
-            hardResetCanvas();
-            showEmptyState();
-            showToast('最初の画面に戻りました');
-        }
-
-        function closeEditor() {
-            resetEditor();
-        }
-
-        function initEditor(imgTag) {
-            showEditorState();
-            
-            STATE.img = new fabric.Image(imgTag, { selectable: false, evented: false });
-            const maxDim = Math.max(imgTag.width, imgTag.height);
-            STATE.scaleFactor = Math.max(1, maxDim / 1200); 
-            
-            // 初期値セット
-            setSize(6); 
-
-            canvas.setDimensions({ width: imgTag.width, height: imgTag.height });
-            canvas.setBackgroundImage(STATE.img, canvas.renderAll.bind(canvas));
-            fitToScreen(); 
-            setMode('select');
-        }
-
-        function fitToScreen() {
-            if(!STATE.img) return;
-            const c = document.getElementById('dropZone');
-            const vw = c.clientWidth - 80; const vh = c.clientHeight - 80;
-            if(vw<=0 || vh<=0) return;
-            setZoom(Math.min(1, Math.min(vw/STATE.img.width, vh/STATE.img.height)));
-        }
-        function setZoom(z) {
-            STATE.zoom = z; canvas.setZoom(z);
-            canvas.setDimensions({ width: STATE.img.width * z, height: STATE.img.height * z });
-            document.getElementById('zoomLevel').textContent = Math.round(z*100) + '%';
-        }
-        function zoomIn() { let z = STATE.zoom * 1.2; if(z>5)z=5; setZoom(z); }
-        function zoomOut() { let z = STATE.zoom / 1.2; if(z<0.1)z=0.1; setZoom(z); }
-
-        function saveImage() {
-            if(!STATE.img) return;
-            const z = STATE.zoom; setZoom(1); 
-            canvas.discardActiveObject(); canvas.renderAll();
-            canvas.getElement().toBlob(blob => {
-                const url = URL.createObjectURL(blob);
-                const l = document.createElement('a'); l.download = `snapmark-${Date.now()}.png`; l.href = url;
-                document.body.appendChild(l); l.click(); document.body.removeChild(l);
-                showToast('保存しました');
+                const content = await zip.generateAsync({ type: "blob" });
+                const url = URL.createObjectURL(content);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "notebooklm_slides.zip";
+                a.click();
                 URL.revokeObjectURL(url);
-                setZoom(z);
-            }, 'image/png', 1.0);
-        }
-        
-        function resetCanvas() { if(confirm('全消去しますか？')) canvas.getObjects().forEach(o => canvas.remove(o)); }
+            };
 
-        let toastTimeout;
-        function showToast(msg, isError = false) {
-            const t = document.getElementById('toast');
-            const iconBg = document.getElementById('toast-icon-bg');
-            document.getElementById('toastMsg').textContent = msg;
-            
-            // Re-inject icon HTML
-            const iconName = isError ? 'alert-circle' : 'check';
-            const iconClass = isError ? "w-4 h-4 stroke-[3] text-rose-500" : "w-4 h-4 stroke-[3] text-emerald-600";
-            iconBg.innerHTML = `<i data-lucide="${iconName}" class="${iconClass}"></i>`;
-            
-            t.className = "fixed top-24 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur pl-4 pr-6 py-3 rounded-full shadow-float flex items-center gap-3 z-50 border transition-all duration-300";
-            
-            if(isError) {
-                iconBg.className = 'bg-rose-100 p-1 rounded-full'; t.classList.add('border-rose-200');
-            } else {
-                iconBg.className = 'bg-emerald-100 p-1 rounded-full'; t.classList.add('border-white/50');
-            }
-            lucide.createIcons();
+            const downloadGif = () => {
+                if (images.length === 0) return;
+                setIsProcessing(true);
+                setProcessStatus("GIFアニメーションを生成中...");
+                
+                gifshot.createGIF({
+                    images: images,
+                    gifWidth: 600,
+                    gifHeight: 338,
+                    interval: 1.5,
+                    numFrames: 10,
+                }, function(obj) {
+                    if(!obj.error) {
+                        const image = obj.image;
+                        const a = document.createElement("a");
+                        a.href = image;
+                        a.download = "presentation_preview.gif";
+                        a.click();
+                    } else {
+                        alert("GIF生成に失敗しました。");
+                    }
+                    setIsProcessing(false);
+                    setProcessStatus("");
+                });
+            };
 
-            t.classList.remove('toast-hidden'); t.classList.add('show');
+            const copyToClipboard = (text, id) => {
+                navigator.clipboard.writeText(text);
+                setCopiedId(id);
+                setTimeout(() => setCopiedId(null), 2000);
+            };
 
-            if(toastTimeout) clearTimeout(toastTimeout);
-            toastTimeout = setTimeout(() => {
-                t.classList.remove('show'); t.classList.add('toast-hidden');
-            }, 3000);
-        }
-        async function activateEyeDropper() {
-            if (!window.EyeDropper) { showToast('スポイト未対応', true); return; }
-            try { const r = await new EyeDropper().open(); setColor(r.sRGBHex); } catch(e){}
-        }
+            const reset = () => {
+                setFile(null);
+                setImages([]);
+                setPrompts(INITIAL_TEMPLATES);
+                setApiKey(""); // Reset API Key on reset for security
+                setActiveTab('preview');
+                setErrorMsg("");
+            };
+
+            // Gemini Analysis Logic
+            const analyzeWithGemini = async () => {
+                if (!apiKey) {
+                    setErrorMsg("Gemini APIキーを入力してください。");
+                    return;
+                }
+                
+                setIsAnalyzing(true);
+                setErrorMsg("");
+                // 入力欄は表示したままだが、処理中は操作不能にする等の制御も可。今回は分かりやすさ優先でそのまま。
+
+                try {
+                    const genAI = new GoogleGenerativeAI(apiKey);
+                    
+                    // モデル指定: gemini-1.5-flash を使用 (安定版)
+                    const model = genAI.getGenerativeModel({ 
+                        model: GEMINI_MODEL_NAME,
+                        generationConfig: {
+                            temperature: 0.7,
+                        }
+                    });
+
+                    // Prepare prompt and images
+                    // Payload size limits対策: 最大5枚程度の代表スライドを抽出
+                    let targetIndices = [];
+                    if (images.length <= 5) {
+                        targetIndices = images.map((_, i) => i);
+                    } else {
+                        targetIndices = [
+                            0, 
+                            Math.floor(images.length * 0.25),
+                            Math.floor(images.length * 0.5),
+                            Math.floor(images.length * 0.75),
+                            images.length - 1
+                        ];
+                        // remove duplicates if any
+                        targetIndices = [...new Set(targetIndices)].sort((a,b)=>a-b);
+                    }
+
+                    const imageParts = targetIndices.map(idx => {
+                        return {
+                            inlineData: {
+                                data: images[idx].split(',')[1],
+                                mimeType: "image/jpeg",
+                            },
+                        };
+                    });
+
+                    const systemPrompt = `
+                    あなたはプロフェッショナルなプレゼンテーションコンサルタントです。
+                    ユーザーから提供されたスライド画像（NotebookLM等で生成されたもの）を分析し、
+                    構成・ストーリー・メッセージ・情報量の観点から診断を行ってください。
+                    
+                    その診断に基づき、この資料を劇的に改善するための「NotebookLMへの再指示用プロンプト」を3パターン作成してください。
+                    
+                    パターン定義:
+                    1. 視覚インパクト型（TED風、文字少なめ、ビジュアル重視）
+                    2. ストーリーテリング型（物語構成、感情に訴える、共感を呼ぶ）
+                    3. 詳細解説型（講義風、論理的、抜け漏れのない詳細な構成）
+
+                    出力は以下のJSON形式のみで行ってください。Markdownのコードブロックで囲まないでください。
+                    [
+                      {
+                        "title": "視覚インパクト型",
+                        "content": "..." // NotebookLMに入力する具体的なプロンプト本文
+                      },
+                      {
+                        "title": "ストーリーテリング型",
+                        "content": "..."
+                      },
+                      {
+                        "title": "詳細解説型",
+                        "content": "..."
+                      }
+                    ]
+                    `;
+
+                    const result = await model.generateContent([systemPrompt, ...imageParts]);
+                    const response = await result.response;
+                    const text = response.text();
+                    
+                    // JSON parsing cleanup
+                    const jsonString = text.replace(/```json|```/g, "").trim();
+                    let analysisResult;
+                    try {
+                        analysisResult = JSON.parse(jsonString);
+                    } catch (e) {
+                        console.error("JSON Parse Error", e);
+                        throw new Error("AIからの応答が正しい形式ではありませんでした。再試行してください。");
+                    }
+
+                    // Update prompts state with Gemini generated content
+                    const newPrompts = INITIAL_TEMPLATES.map((tpl, idx) => {
+                        if (analysisResult[idx]) {
+                            return {
+                                ...tpl,
+                                content: analysisResult[idx].content,
+                                description: `Gemini (${GEMINI_MODEL_NAME}) がスライドの内容を解析し、この資料に最適化された具体的な指示を生成しました。`,
+                                generated: true
+                            };
+                        }
+                        return tpl;
+                    });
+
+                    setPrompts(newPrompts);
+                    setShowApiInput(false); // 成功したら入力欄を閉じる
+
+                } catch (error) {
+                    console.error("Gemini Analysis Error:", error);
+                    
+                    let friendlyMsg = "エラーが発生しました: " + error.message;
+                    
+                    if (error.message.includes("404") || error.message.includes("not found")) {
+                        friendlyMsg = `モデル "${GEMINI_MODEL_NAME}" が見つかりませんでした。このモデルはまだあなたのAPIキーで利用できないか、モデル名が誤っている可能性があります。`;
+                    } else if (error.message.includes("403") || error.message.includes("API key")) {
+                        friendlyMsg = "APIキーが無効か、アクセス権限がありません。キーを再確認してください。";
+                    } else if (error.message.includes("429")) {
+                        friendlyMsg = "APIの利用制限（レートリミット）に達しました。しばらく時間を置いてから再試行してください。";
+                    }
+
+                    setErrorMsg(friendlyMsg);
+                } finally {
+                    setIsAnalyzing(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen font-sans selection:bg-brand-100 selection:text-brand-900 pb-20">
+                    
+                    {/* Header */}
+                    <header className="glass-panel sticky top-0 z-50">
+                        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-gradient-to-br from-brand-500 to-indigo-600 text-white p-2 rounded-xl shadow-lg shadow-brand-500/30">
+                                    <Sparkles className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold tracking-tight text-slate-800 leading-tight">
+                                        Slide Polisher
+                                    </h1>
+                                    <p className="text-[10px] font-medium text-slate-500 tracking-wider uppercase">for NotebookLM</p>
+                                </div>
+                            </div>
+                            {file && (
+                                <button onClick={reset} className="text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-full hover:bg-slate-100">
+                                    <X className="w-4 h-4" /> 最初に戻る
+                                </button>
+                            )}
+                        </div>
+                    </header>
+
+                    <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+                        
+                        {/* Hero & How-to Section */}
+                        {!file && !isProcessing && (
+                            <div className="animate-slide-up mb-12">
+                                <div className="text-center mb-10">
+                                    <h2 className="text-3xl sm:text-4xl font-extrabold text-slate-800 mb-4 tracking-tight">
+                                        NotebookLMのスライドを、<br className="hidden sm:block"/>
+                                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-600 to-indigo-600">もっと美しく、もっと自由に。</span>
+                                    </h2>
+                                    <p className="text-slate-600 max-w-2xl mx-auto text-base sm:text-lg">
+                                        PDFの画像変換・GIFアニメ化から、<br/>
+                                        Geminiによる<span className="font-bold text-brand-600">内容に基づいた改善プロンプト提案</span>まで。
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto mb-10">
+                                    <StepCard 
+                                        number="1" 
+                                        title="PDFをアップロード" 
+                                        text="NotebookLMで生成・エクスポートしたスライド（PDF）をここにドロップします。" 
+                                    />
+                                    <StepCard 
+                                        number="2" 
+                                        title="画像やGIFに変換" 
+                                        text="SNSシェア用のGIFアニメや、素材用の高画質JPEGとして一括保存できます。" 
+                                    />
+                                    <StepCard 
+                                        number="3" 
+                                        title="AIによる解析＆提案" 
+                                        text={`Gemini (${GEMINI_MODEL_NAME}) がスライド画像を解析し、より良い資料にするための指示を提案します。`} 
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Upload Area */}
+                        {!file && !isProcessing && (
+                            <div 
+                                className="max-w-2xl mx-auto animate-fade-in"
+                                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('scale-[1.02]'); }}
+                                onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('scale-[1.02]'); }}
+                                onDrop={onDrop}
+                            >
+                                <label className="relative cursor-pointer group block">
+                                    <div className="absolute inset-0 bg-gradient-to-r from-brand-500 to-indigo-600 rounded-3xl blur opacity-20 group-hover:opacity-30 transition-opacity duration-300"></div>
+                                    <div className="relative bg-white border-2 border-dashed border-slate-300 rounded-3xl p-12 flex flex-col items-center justify-center transition-all duration-300 group-hover:border-brand-400 group-hover:bg-slate-50/50">
+                                        <div className="bg-brand-50 p-5 rounded-2xl mb-6 group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 shadow-sm">
+                                            <Upload className="w-10 h-10 text-brand-600" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-slate-800 mb-2">PDFファイルをドロップ</h3>
+                                        <p className="text-slate-500 text-sm mb-8 text-center leading-relaxed">
+                                            またはクリックしてファイルを選択<br/>
+                                            <span className="text-xs text-slate-400">NotebookLM Export PDF Only</span>
+                                        </p>
+                                        <div className="bg-slate-900 text-white px-6 py-3 rounded-xl text-sm font-medium shadow-lg shadow-slate-900/20 group-hover:shadow-xl group-hover:translate-y-[-2px] transition-all flex items-center gap-2">
+                                            ファイルを選択する
+                                        </div>
+                                    </div>
+                                    <input type="file" className="hidden" accept="application/pdf" onChange={(e) => handleFileChange(e.target.files[0])} />
+                                </label>
+                            </div>
+                        )}
+
+                        {/* Processing State */}
+                        {isProcessing && (
+                            <div className="flex flex-col items-center justify-center mt-20 animate-fade-in text-center">
+                                <div className="relative w-20 h-20 mb-6">
+                                    <div className="absolute inset-0 border-4 border-slate-200 rounded-full"></div>
+                                    <div className="absolute inset-0 border-4 border-brand-600 rounded-full border-t-transparent animate-spin"></div>
+                                </div>
+                                <h3 className="text-xl font-bold text-slate-800 mb-2">変換しています...</h3>
+                                <p className="text-slate-500 font-medium">{processStatus}</p>
+                            </div>
+                        )}
+
+                        {/* Main Content */}
+                        {file && !isProcessing && (
+                            <div className="animate-slide-up">
+                                
+                                {/* Actions & Tabs Bar */}
+                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+                                    {/* Tabs */}
+                                    <div className="flex bg-slate-200/50 p-1.5 rounded-xl backdrop-blur-sm">
+                                        <button 
+                                            onClick={() => setActiveTab('preview')}
+                                            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'preview' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                                        >
+                                            <ImageIcon className="w-4 h-4" />
+                                            プレビュー & 保存
+                                        </button>
+                                        <button 
+                                            onClick={() => setActiveTab('prompts')}
+                                            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${activeTab === 'prompts' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'}`}
+                                        >
+                                            <Wand2 className="w-4 h-4" />
+                                            Gemini 修正提案
+                                        </button>
+                                    </div>
+
+                                    {/* Download Actions */}
+                                    <div className="flex gap-3 w-full md:w-auto">
+                                        <button 
+                                            onClick={downloadZip}
+                                            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all"
+                                        >
+                                            <FileArchive className="w-4 h-4" /> ZIP保存
+                                        </button>
+                                        <button 
+                                            onClick={downloadGif}
+                                            className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-slate-900/20 hover:shadow-xl transition-all"
+                                        >
+                                            <Film className="w-4 h-4" /> GIFアニメ
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Tab Content */}
+                                {activeTab === 'preview' ? (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {images.map((img, idx) => (
+                                            <div key={idx} className="group relative bg-white rounded-2xl shadow-sm border border-slate-200/60 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                                                <div className="aspect-video bg-slate-100 relative overflow-hidden">
+                                                    <img src={img} alt={`Slide ${idx + 1}`} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                                    <div className="absolute top-3 left-3 bg-black/70 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-full border border-white/20">
+                                                        #{idx + 1}
+                                                    </div>
+                                                </div>
+                                                <div className="p-4 flex justify-between items-center bg-white">
+                                                    <span className="text-xs font-semibold text-slate-400">Page {idx + 1}</span>
+                                                    <button 
+                                                        onClick={() => {
+                                                            const a = document.createElement("a");
+                                                            a.href = img;
+                                                            a.download = `slide_${String(idx+1).padStart(2,'0')}.jpg`;
+                                                            a.click();
+                                                        }}
+                                                        className="text-brand-600 hover:text-brand-800 hover:bg-brand-50 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
+                                                    >
+                                                        画像保存
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="animate-fade-in">
+                                        <div className="mb-8 p-6 bg-brand-50/50 border border-brand-100 rounded-2xl flex flex-col md:flex-row items-start gap-6">
+                                            <div className="bg-white p-3 rounded-xl shadow-sm text-brand-500 hidden md:block">
+                                                <BrainCircuit className="w-8 h-8" />
+                                            </div>
+                                            <div className="flex-1 w-full">
+                                                <h3 className="font-bold text-slate-800 mb-2 flex items-center gap-2">
+                                                    Geminiによるスライド解析 & プロンプト提案
+                                                    {prompts[0].generated && <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full border border-green-200">Analysis Complete</span>}
+                                                </h3>
+                                                <p className="text-sm text-slate-600 leading-relaxed mb-4">
+                                                    あなたのGemini APIキーを使用して、アップロードされたスライドを解析し、改善のための具体的な指示を作成します。
+                                                    <br/><span className="text-xs text-slate-400">※使用モデル: {GEMINI_MODEL_NAME}</span>
+                                                </p>
+                                                
+                                                {!prompts[0].generated && !isAnalyzing && !showApiInput && (
+                                                    <button 
+                                                        onClick={() => setShowApiInput(true)}
+                                                        className="bg-brand-600 hover:bg-brand-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-brand-500/20 transition-all flex items-center gap-2"
+                                                    >
+                                                        <Sparkles className="w-4 h-4" /> APIキーを入力して解析を開始
+                                                    </button>
+                                                )}
+
+                                                {/* API Key Input Modal/Area */}
+                                                {showApiInput && (
+                                                    <div className="mt-4 p-5 bg-white border border-brand-200 rounded-xl shadow-lg animate-fade-in relative z-10">
+                                                        
+                                                        {errorMsg && (
+                                                            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-xs text-red-700">
+                                                                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                                                <span>{errorMsg}</span>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="mb-4">
+                                                            <label className="block text-xs font-bold text-slate-700 mb-1.5">Gemini API Key</label>
+                                                            <p className="text-[10px] text-slate-500 mb-3 leading-relaxed">
+                                                                お客様自身のAPIキーを入力してください。キーはこのブラウザ内でのみ一時的に使用され、外部サーバーへの送信や保存は一切行われません。
+                                                            </p>
+                                                            <div className="flex gap-2">
+                                                                <div className="relative flex-1">
+                                                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                                                                        <Key className="w-4 h-4" />
+                                                                    </div>
+                                                                    <input 
+                                                                        type="password" 
+                                                                        value={apiKey}
+                                                                        onChange={(e) => setApiKey(e.target.value)}
+                                                                        placeholder="AIzaSy..."
+                                                                        className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent bg-slate-50"
+                                                                        autoComplete="off"
+                                                                    />
+                                                                </div>
+                                                                <button 
+                                                                    onClick={analyzeWithGemini}
+                                                                    disabled={!apiKey || isAnalyzing}
+                                                                    className="bg-slate-900 text-white px-5 py-2.5 rounded-lg text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-800 transition-colors shrink-0"
+                                                                >
+                                                                    {isAnalyzing ? '解析中...' : '解析開始'}
+                                                                </button>
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-400 mt-2 text-right">
+                                                                APIキーをお持ちでない方は <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline hover:text-brand-600">Google AI Studio</a> から取得できます。
+                                                            </p>
+                                                        </div>
+
+                                                        {/* Terms of Use Accordion */}
+                                                        <ApiTermsOfUse />
+
+                                                    </div>
+                                                )}
+
+                                                {isAnalyzing && !showApiInput && (
+                                                    <div className="mt-4 flex items-center gap-3 text-brand-600 bg-white px-4 py-3 rounded-xl border border-brand-100 shadow-sm animate-pulse">
+                                                        <div className="w-4 h-4 border-2 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+                                                        <span className="text-sm font-bold">Gemini ({GEMINI_MODEL_NAME}) がスライドを解析中...</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                            {prompts.map((prompt) => (
+                                                <div key={prompt.id} className={`glass-card rounded-2xl p-6 flex flex-col hover:shadow-lg transition-all border-t-4 ${prompt.borderColor} relative overflow-hidden`}>
+                                                    {/* Decorative background circle */}
+                                                    <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full ${prompt.bg} opacity-50 blur-2xl`}></div>
+
+                                                    <div className="relative z-10">
+                                                        <div className="flex items-center gap-3 mb-2">
+                                                            <div className={`p-2.5 rounded-xl ${prompt.bg} ring-1 ring-inset ring-black/5`}>
+                                                                {prompt.icon}
+                                                            </div>
+                                                            <div>
+                                                                <h3 className="font-bold text-slate-800 text-lg">{prompt.title}</h3>
+                                                                <p className="text-xs font-medium text-slate-500">{prompt.subtitle}</p>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <p className="text-slate-600 text-sm mb-5 min-h-[3em] leading-relaxed">
+                                                            {prompt.description}
+                                                        </p>
+                                                        
+                                                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-5 relative group overflow-hidden">
+                                                            <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-l from-slate-50">
+                                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Preview</span>
+                                                            </div>
+                                                            <pre className="text-xs text-slate-600 whitespace-pre-wrap font-sans leading-relaxed h-60 overflow-y-auto pr-2 scrollbar-thin">
+                                                                {prompt.content}
+                                                            </pre>
+                                                        </div>
+
+                                                        <button
+                                                            onClick={() => copyToClipboard(prompt.content, prompt.id)}
+                                                            className={`mt-auto w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all shadow-sm ${
+                                                                copiedId === prompt.id 
+                                                                ? 'bg-green-500 text-white border border-transparent shadow-green-500/20' 
+                                                                : 'bg-white border border-slate-200 text-slate-700 hover:border-brand-300 hover:text-brand-600'
+                                                            }`}
+                                                        >
+                                                            {copiedId === prompt.id ? (
+                                                                <><Check className="w-4 h-4" /> コピー完了</>
+                                                            ) : (
+                                                                <><Copy className="w-4 h-4" /> プロンプトをコピー</>
+                                                            )}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </main>
+                    
+                    <footer className="glass-panel border-t border-slate-200 mt-auto py-6">
+                         <div className="max-w-5xl mx-auto px-4 text-center">
+                            <p className="text-slate-400 text-xs font-medium">
+                                Secure & Private: Processed entirely in your browser.
+                            </p>
+                        </div>
+                    </footer>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
     </script>
 </body>
 </html>
